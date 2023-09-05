@@ -1,0 +1,31 @@
+{
+  "name": "contract-wizard",
+  "version": "1.0.0",
+  "description": "Generate Rust code for NEAR smart contracts using near-sdk-contract-tools",
+  "main": "./dist/index.js",
+  "scripts": {
+    "prepare": "husky install",
+    "build": "node build.mjs",
+    "format": "prettier . --write"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/near/contract-wizard.git"
+  },
+  "author": "Jacob Lindahl <jacob.lindahl@near.org>",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/near/contract-wizard/issues"
+  },
+  "homepage": "https://github.com/near/contract-wizard#readme",
+  "devDependencies": {
+    "esbuild": "^0.19.2",
+    "husky": "^8.0.3",
+    "lint-staged": "^14.0.1",
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
+  },
+  "lint-staged": {
+    "**/*": "prettier --write --ignore-unknown"
+  }
+}

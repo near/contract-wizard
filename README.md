@@ -6,6 +6,14 @@
 2. Run `npm run prepare` to install commit hooks.
 3. Run `npm run build` to build the project.
 
+## Generating code using the CLI
+
+There's a simple CLI script `src/cli.ts` that you can use to try out the code generation.
+
+```bash
+npm run -s cli 'ft:{"name":"My Fungible Token","symbol":"MFT","decimals":24,"preMint":10}' > my_ft_contract.rs
+```
+
 ## Testing
 
 Run `npm run test` to run the tests.

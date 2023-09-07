@@ -2,12 +2,13 @@
   "name": "contract-wizard",
   "version": "1.0.0",
   "description": "Generate Rust code for NEAR smart contracts using near-sdk-contract-tools",
-  "main": "./dist/index.js",
+  "main": "./build/index.js",
   "scripts": {
     "prepare": "husky install",
     "build": "node build.mjs",
     "format": "prettier . --write",
-    "test": "node build-test.mjs && node build/test.js"
+    "test": "node build-test.mjs && node build/test.js",
+    "cli": "node build-cli.mjs && node build/cli.js"
   },
   "repository": {
     "type": "git",

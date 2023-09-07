@@ -6,16 +6,16 @@ function indent(n: number): (s: string) => string {
       .join('\n');
 }
 
-interface Import {
+export interface Import {
   path: string[];
 }
 
-interface Guards {
+export interface Guards {
   beforeChangeFunction: string[];
   afterChangeFunction: string[];
 }
 
-interface TokenCodeFragments {
+export interface TokenCodeFragments {
   imports: Import[];
   deriveMacroName?: string;
   deriveMacroAttribute?: string;
@@ -23,34 +23,37 @@ interface TokenCodeFragments {
   otherCode?: string;
 }
 
-interface Token {
+export interface Token {
   generate(guards: Guards): TokenCodeFragments;
 }
 
-class FungibleToken implements Token {
+export class FungibleToken implements Token {
   constructor(
-    public name: string,
-    public symbol: string,
-    public decimals: number = 18,
-    public preMint: number = 0,
+    public config: {
+      name: string;
+      symbol: string;
+      decimals: number;
+      preMint: number;
+    },
   ) {}
 
   generate(guards: Guards): TokenCodeFragments {
     const imports = [
-      { path: ['near_sdk', 'env'] },
       { path: ['near_sdk_contract_tools', 'FungibleToken'] },
       { path: ['near_sdk_contract_tools', 'standard', 'nep141', '*'] },
     ];
 
-    const constructorCode =
-      this.preMint > 0
-        ? `self.deposit_unchecked(&env::predecessor_account_id(), ${this.preMint}u128)`
-        : undefined;
+    let constructorCode = undefined;
+
+    if (this.config.preMint > 0) {
+      imports.push({ path: ['near_sdk', 'env'] });
+      constructorCode = `contract.deposit_unchecked(&env::predecessor_account_id(), ${this.config.preMint}u128);`;
+    }
 
     const attributes = [
-      `name = "${this.name}"`,
-      `symbol = "${this.symbol}"`,
-      `decimals = ${this.decimals}`,
+      `name = "${this.config.name}"`,
+      `symbol = "${this.config.symbol}"`,
+      `decimals = ${this.config.decimals}`,
     ];
 
     let otherCode = undefined;
@@ -86,10 +89,12 @@ ${guards.afterChangeFunction.map(indent(2)).join('\n')}
   }
 }
 
-class NonFungibleToken implements Token {
+export class NonFungibleToken implements Token {
   constructor(
-    public name: string,
-    public symbol: string,
+    public config: {
+      name: string;
+      symbol: string;
+    },
   ) {}
 
   generate(guards: Guards): TokenCodeFragments {
@@ -103,8 +108,8 @@ class NonFungibleToken implements Token {
 
     const constructorCode = `
 contract.set_contract_metadata(ContractMetadata::new(
-    "${this.name}".to_string(),
-    "${this.symbol}".to_string(),
+    "${this.config.name}".to_string(),
+    "${this.config.symbol}".to_string(),
     None,
 ));
 `.trim();
@@ -172,11 +177,11 @@ ${guards.afterChangeFunction.map(indent(2)).join('\n')}
   }
 }
 
-interface ContractPlugin {
+export interface ContractPlugin {
   generate(): PluginCodeFragments;
 }
 
-interface PluginCodeFragments {
+export interface PluginCodeFragments {
   imports: Import[];
   deriveMacroName?: string;
   deriveMacroAttribute?: string;
@@ -185,8 +190,8 @@ interface PluginCodeFragments {
   afterChangeFunctionGuards: string[];
 }
 
-class Owner implements ContractPlugin {
-  constructor() {}
+export class Owner implements ContractPlugin {
+  constructor(_config: {}) {}
 
   generate(): PluginCodeFragments {
     const imports = [
@@ -208,8 +213,8 @@ class Owner implements ContractPlugin {
   }
 }
 
-class Pause implements ContractPlugin {
-  constructor() {}
+export class Pause implements ContractPlugin {
+  constructor(_config: {}) {}
 
   generate(): PluginCodeFragments {
     const imports = [
@@ -226,7 +231,7 @@ class Pause implements ContractPlugin {
   }
 }
 
-interface CodeGenerationOptions {
+export interface CodeGenerationOptions {
   token: Token;
   plugins: ContractPlugin[];
 }
@@ -287,7 +292,7 @@ ${childCode},
     .join('\n');
 }
 
-function generateCode(options: CodeGenerationOptions): string {
+export function generateCode(options: CodeGenerationOptions): string {
   const imports = [
     { path: ['near_sdk', 'near_bindgen'] },
     { path: ['near_sdk', 'PanicOnDefault'] },
@@ -306,7 +311,7 @@ function generateCode(options: CodeGenerationOptions): string {
     'BorshDeserialize',
     'PanicOnDefault',
   ];
-  const deriveMacroAttributes = ['#[near_bindgen]'];
+  const deriveMacroAttributes = [];
   const constructorCodes = [];
 
   Object.values(options.plugins).forEach((plugin) => {
@@ -321,19 +326,33 @@ function generateCode(options: CodeGenerationOptions): string {
     if (pluginCodeFragments.constructorCode) {
       constructorCodes.push(pluginCodeFragments.constructorCode);
     }
+    if (pluginCodeFragments.deriveMacroName) {
+      deriveMacroNames.push(pluginCodeFragments.deriveMacroName);
+    }
+    if (pluginCodeFragments.deriveMacroAttribute) {
+      deriveMacroAttributes.push(pluginCodeFragments.deriveMacroAttribute);
+    }
   });
 
   const tokenCodeFragments = options.token.generate(guards);
 
   imports.push(...tokenCodeFragments.imports);
+  if (tokenCodeFragments.deriveMacroName) {
+    deriveMacroNames.push(tokenCodeFragments.deriveMacroName);
+  }
+  if (tokenCodeFragments.deriveMacroAttribute) {
+    deriveMacroAttributes.push(tokenCodeFragments.deriveMacroAttribute);
+  }
   if (tokenCodeFragments.constructorCode) {
     constructorCodes.push(tokenCodeFragments.constructorCode);
   }
 
-  let constructorCode = 'Self';
+  deriveMacroAttributes.push('#[near_bindgen]');
+
+  let constructorCode = 'Self {}';
   if (constructorCodes.length > 0) {
     constructorCode = `
-let mut contract = Self;
+let mut contract = Self {};
 
 ${constructorCodes.join('\n')}
 
@@ -346,7 +365,7 @@ ${resolveImports(imports)}
 
 #[derive(${deriveMacroNames.join(', ')})]
 ${deriveMacroAttributes.join('\n')}
-pub struct Contract;
+pub struct Contract {}
 
 #[near_bindgen]
 impl Contract {
@@ -359,12 +378,3 @@ ${indent(2)(constructorCode)}
 ${tokenCodeFragments.otherCode ? tokenCodeFragments.otherCode : ''}
 `.trim();
 }
-
-// Example usage:
-
-// console.log(
-//   generateCode({
-//     token: new NonFungibleToken('MyNFT', 'MYNFT'),
-//     plugins: [new Owner()],
-//   }),
-// );

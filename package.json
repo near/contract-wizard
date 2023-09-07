@@ -6,7 +6,8 @@
   "scripts": {
     "prepare": "husky install",
     "build": "node build.mjs",
-    "format": "prettier . --write"
+    "format": "prettier . --write",
+    "test": "node build-test.mjs && node build/test.js"
   },
   "repository": {
     "type": "git",
@@ -19,6 +20,7 @@
   },
   "homepage": "https://github.com/near/contract-wizard#readme",
   "devDependencies": {
+    "@types/node": "^20.5.9",
     "esbuild": "^0.19.2",
     "husky": "^8.0.3",
     "lint-staged": "^14.0.1",

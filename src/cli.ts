@@ -5,7 +5,7 @@ import {
   Owner,
   Pause,
   ContractPlugin,
-} from './index';
+} from './lib';
 
 const [tokenString, ...pluginStrings] = process.argv.slice(2);
 

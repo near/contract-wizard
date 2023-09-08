@@ -7,7 +7,7 @@ import {
   Owner,
   Pause,
   generateCode,
-} from './index';
+} from './lib';
 
 const tests: (() => CodeGenerationOptions)[] = [
   () => ({

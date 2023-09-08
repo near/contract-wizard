@@ -1,4 +1,4 @@
-import { CodeGenerationOptionsPojo, generateCode } from './index';
+import { CodeGenerationOptionsPojo, generateCode } from './lib';
 
 window.addEventListener('message', (e) => {
   window.top!.postMessage(

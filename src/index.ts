@@ -33,7 +33,7 @@ export class FungibleToken implements Token {
       name: string;
       symbol: string;
       decimals: number;
-      preMint: number;
+      preMint: string;
     },
   ) {}
 
@@ -45,7 +45,7 @@ export class FungibleToken implements Token {
 
     let constructorCode = undefined;
 
-    if (this.config.preMint > 0) {
+    if (this.config.preMint.trim().length > 0) {
       imports.push({ path: ['near_sdk', 'env'] });
       constructorCode = `contract.deposit_unchecked(&env::predecessor_account_id(), ${this.config.preMint}u128);`;
     }
@@ -236,6 +236,51 @@ export interface CodeGenerationOptions {
   plugins: ContractPlugin[];
 }
 
+export interface CodeGenerationOptionsPojo {
+  token:
+    | {
+        which: 'ft';
+        config: ConstructorParameters<typeof FungibleToken>[0];
+      }
+    | {
+        which: 'nft';
+        config: ConstructorParameters<typeof NonFungibleToken>[0];
+      };
+  plugins: ('owner' | 'pause')[];
+}
+
+function isPojoConfig(x: any): x is CodeGenerationOptionsPojo {
+  return (
+    x &&
+    typeof x === 'object' &&
+    typeof x.token === 'object' &&
+    typeof x.token.which === 'string'
+  );
+}
+
+function pojoToConfig(pojo: CodeGenerationOptionsPojo): CodeGenerationOptions {
+  const token =
+    pojo.token.which === 'ft'
+      ? new FungibleToken(pojo.token.config)
+      : new NonFungibleToken(pojo.token.config);
+
+  const plugins = pojo.plugins.map((plugin) => {
+    switch (plugin) {
+      case 'owner':
+        return new Owner({});
+      case 'pause':
+        return new Pause({});
+      default:
+        throw new Error(`Unknown plugin: ${plugin}`);
+    }
+  });
+
+  return {
+    token,
+    plugins,
+  };
+}
+
 interface ImportNode {
   part: string;
   children: {
@@ -292,7 +337,16 @@ ${childCode},
     .join('\n');
 }
 
-export function generateCode(options: CodeGenerationOptions): string {
+export function generateCode(
+  options: CodeGenerationOptions | CodeGenerationOptionsPojo,
+): string {
+  let useOptions;
+  if (isPojoConfig(options)) {
+    useOptions = pojoToConfig(options);
+  } else {
+    useOptions = options;
+  }
+
   const imports = [
     { path: ['near_sdk', 'near_bindgen'] },
     { path: ['near_sdk', 'PanicOnDefault'] },
@@ -334,7 +388,7 @@ export function generateCode(options: CodeGenerationOptions): string {
     }
   });
 
-  const tokenCodeFragments = options.token.generate(guards);
+  const tokenCodeFragments = useOptions.token.generate(guards);
 
   imports.push(...tokenCodeFragments.imports);
   if (tokenCodeFragments.deriveMacroName) {

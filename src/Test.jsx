@@ -22,7 +22,6 @@ return (
           plugins: [],
         },
         onMessage: (e) => {
-          console.log('hello');
           State.update({ msg: e });
         },
       }}

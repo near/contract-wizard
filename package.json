@@ -8,7 +8,8 @@
     "build": "node build.mjs",
     "format": "prettier . --write",
     "test": "node build-test.mjs && node build/test.js",
-    "cli": "node build-cli.mjs && node build/cli.js"
+    "cli": "node build-cli.mjs && node build/cli.js",
+    "dev": "bos-loader test --path ./build"
   },
   "repository": {
     "type": "git",

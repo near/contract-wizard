@@ -98,13 +98,7 @@ export class NonFungibleToken implements Token {
   ) {}
 
   generate(guards: Guards): TokenCodeFragments {
-    const imports = [
-      { path: ['near_sdk', 'AccountId'] },
-      { path: ['near_sdk_contract_tools', 'NonFungibleToken'] },
-      { path: ['near_sdk_contract_tools', 'standard', 'nep171', '*'] },
-      { path: ['near_sdk_contract_tools', 'standard', 'nep177', '*'] },
-      { path: ['near_sdk_contract_tools', 'standard', 'nep178', '*'] },
-    ];
+    const imports = [{ path: ['near_sdk_contract_tools', 'nft', '*'] }];
 
     const constructorCode = `
 contract.set_contract_metadata(ContractMetadata::new(
@@ -122,50 +116,102 @@ contract.set_contract_metadata(ContractMetadata::new(
       guards.afterChangeFunction.length == 0 &&
       guards.beforeChangeFunction.length == 0
     ) {
-      attributes.push('no_hooks');
+      attributes.push('no_core_hooks', 'no_approval_hooks');
     } else {
-      otherCode = `
-impl Nep178Hook for Contract {
-    fn before_nft_approve(&self, token_id: &TokenId, account_id: &AccountId) {
-${guards.beforeChangeFunction.map(indent(2)).join('\n')}
-    }
+      imports.push({ path: ['near_sdk', 'AccountId'] });
 
-    fn after_nft_approve(&mut self, token_id: &TokenId, account_id: &AccountId, _approval_id: &ApprovalId, _: ()) {
-${guards.afterChangeFunction.map(indent(2)).join('\n')}
-    }
+      const beforeChangeFunctionCode = guards.beforeChangeFunction
+        .map(indent(1))
+        .join('\n');
+      const afterChangeFunctionCode = guards.afterChangeFunction
+        .map(indent(1))
+        .join('\n');
 
-    fn before_nft_revoke(&self, token_id: &TokenId, account_id: &AccountId) {
-${guards.beforeChangeFunction.map(indent(2)).join('\n')}
-    }
-
-    fn after_nft_revoke(&mut self, token_id: &TokenId, account_id: &AccountId, _: ()) {
-${guards.afterChangeFunction.map(indent(2)).join('\n')}
-    }
-
-    fn before_nft_revoke_all(&self, token_id: &TokenId) {
-${guards.beforeChangeFunction.map(indent(2)).join('\n')}
-    }
-
-    fn after_nft_revoke_all(&mut self, token_id: &TokenId, _: ()) {
-${guards.afterChangeFunction.map(indent(2)).join('\n')}
-    }
+      let nep178HookCode = [
+        beforeChangeFunctionCode.length > 0
+          ? `
+fn before_nft_approve(&self, token_id: &TokenId, account_id: &AccountId) {
+${beforeChangeFunctionCode}
 }
 
-impl Nep171Hook for Contract {
-    fn before_nft_transfer(contract: &Self, transfer: &Nep171Transfer) {
-${guards.beforeChangeFunction.map(indent(2)).join('\n')}
-    }
+fn before_nft_revoke(&self, token_id: &TokenId, account_id: &AccountId) {
+${beforeChangeFunctionCode}
+}
 
-    fn after_nft_transfer(contract: &mut Self, transfer: &Nep171Transfer, _: ()) {
-${guards.afterChangeFunction.map(indent(2)).join('\n')}
-    }
+fn before_nft_revoke_all(&self, token_id: &TokenId) {
+${beforeChangeFunctionCode}
+}
+`.trim()
+          : '',
+        afterChangeFunctionCode.length > 0
+          ? `
+fn after_nft_approve(&mut self, token_id: &TokenId, account_id: &AccountId, _approval_id: &ApprovalId) {
+${afterChangeFunctionCode}
+}
+
+fn after_nft_revoke(&mut self, token_id: &TokenId, account_id: &AccountId) {
+${afterChangeFunctionCode}
+}
+
+fn after_nft_revoke_all(&mut self, token_id: &TokenId) {
+${afterChangeFunctionCode}
+}
+`.trim()
+          : '',
+      ]
+        .filter((x) => x.length > 0)
+        .map(indent(1))
+        .join('\n\n');
+
+      if (nep178HookCode.length == 0) {
+        attributes.push('no_approval_hooks');
+      } else {
+        nep178HookCode = `
+impl SimpleNep178Hook for Contract {
+${nep178HookCode}
 }
 `.trim();
+      }
+
+      let nep171HookCode = [
+        beforeChangeFunctionCode.length > 0
+          ? `
+fn before_nft_transfer(&self, transfer: &Nep171Transfer) {
+${beforeChangeFunctionCode}
+}
+        `.trim()
+          : '',
+        afterChangeFunctionCode.length > 0
+          ? `
+fn before_nft_transfer(&self, transfer: &Nep171Transfer) {
+${afterChangeFunctionCode}
+}
+        `.trim()
+          : '',
+      ]
+        .filter((x) => x.length > 0)
+        .map(indent(1))
+        .join('\n\n');
+
+      if (nep171HookCode.length == 0) {
+        attributes.push('no_core_hooks');
+      } else {
+        nep171HookCode = `
+impl SimpleNep171Hook for Contract {
+${nep171HookCode}
+}
+`.trim();
+      }
+
+      otherCode = [nep178HookCode, nep171HookCode]
+        .filter((x) => x.length > 0)
+        .join('\n\n');
     }
 
-    const deriveMacroAttribute = `#[non_fungible_token(${attributes.join(
-      ', ',
-    )})]`;
+    const deriveMacroAttribute =
+      attributes.length > 0
+        ? `#[non_fungible_token(${attributes.join(', ')})]`
+        : undefined;
 
     return {
       imports,
@@ -414,7 +460,8 @@ contract
 `.trim();
   }
 
-  return `
+  return (
+    `
 ${resolveImports(imports)}
 
 #[derive(${deriveMacroNames.join(', ')})]
@@ -430,5 +477,6 @@ ${indent(2)(constructorCode)}
 }
 
 ${tokenCodeFragments.otherCode ? tokenCodeFragments.otherCode : ''}
-`.trim();
+`.trim() + '\n'
+  );
 }

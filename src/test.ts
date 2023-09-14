@@ -4,6 +4,7 @@ import * as path from 'path';
 import {
   CodeGenerationOptions,
   FungibleToken,
+  NonFungibleToken,
   Owner,
   Pause,
   generateCode,
@@ -28,10 +29,25 @@ const tests: (() => CodeGenerationOptions)[] = [
     }),
     plugins: [new Owner({}), new Pause({})],
   }),
+  () => ({
+    token: new NonFungibleToken({
+      name: 'My Fungible Token',
+      symbol: 'MFT',
+    }),
+    plugins: [],
+  }),
+  () => ({
+    token: new NonFungibleToken({
+      name: 'My Fungible Token',
+      symbol: 'MFT',
+    }),
+    plugins: [new Owner({}), new Pause({})],
+  }),
 ];
 
 for (const test of tests) {
-  const code = generateCode(test());
+  const options = test();
+  const code = generateCode(options);
   fs.writeFileSync('tests/src/lib.rs', code, {
     encoding: 'utf-8',
   });
@@ -43,7 +59,7 @@ for (const test of tests) {
     });
   } catch (e) {
     console.error(`Failed to compile generated code`);
-    console.error(test());
+    console.error(options);
     process.exit(1);
   }
 }

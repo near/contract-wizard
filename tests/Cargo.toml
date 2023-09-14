@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 near-sdk = "4.1.1"
-near-sdk-contract-tools = "1.0.1"
+near-sdk-contract-tools = "1.1.0"
 
 [lib]
 crate-type = ["cdylib"]

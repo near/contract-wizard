@@ -414,7 +414,7 @@ export function generateCode(
   const deriveMacroAttributes = [];
   const constructorCodes = [];
 
-  Object.values(options.plugins).forEach((plugin) => {
+  Object.values(useOptions.plugins).forEach((plugin) => {
     const pluginCodeFragments = plugin.generate();
     imports.push(...pluginCodeFragments.imports);
     guards.beforeChangeFunction.push(

@@ -19,7 +19,7 @@ return (
               preMint: '1000000000000000000000000',
             },
           },
-          plugins: [],
+          plugins: ['owner', 'pause'],
         },
         onMessage: (e) => {
           State.update({ msg: e });

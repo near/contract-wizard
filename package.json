@@ -5,11 +5,14 @@
   "main": "./src/lib.ts",
   "scripts": {
     "prepare": "husky install",
-    "build": "node build.mjs",
+    "build:dev": "node build.mjs",
+    "build:prod": "NODE_ENV=production node build.mjs",
     "format": "prettier . --write",
     "test": "node build-test.mjs && node build/test.js",
     "cli": "node build-cli.mjs && node build/cli.js",
-    "dev": "bos-loader test --path ./build"
+    "dev": "bos-loader test --path ./build/dev/src",
+    "clean": "rm -rf ./build",
+    "deploy": "cd build/prod && bos components deploy contractwizard.near sign-as contractwizard.near network-config mainnet sign-with-macos-keychain send"
   },
   "repository": {
     "type": "git",

@@ -2,7 +2,7 @@ function indent(n: number): (s: string) => string {
   return (s: string) =>
     s
       .split('\n')
-      .map((line) => '    '.repeat(n) + line)
+      .map((line) => (line.length ? '    '.repeat(n) + line : ''))
       .join('\n');
 }
 
@@ -13,6 +13,7 @@ export interface Import {
 export interface Guards {
   beforeChangeFunction: string[];
   afterChangeFunction: string[];
+  beforeAuthorizedFunction: string[];
 }
 
 export interface TokenCodeFragments {
@@ -20,6 +21,7 @@ export interface TokenCodeFragments {
   deriveMacroName?: string;
   deriveMacroAttribute?: string;
   constructorCode?: string;
+  bindgenCode?: string;
   otherCode?: string;
 }
 
@@ -34,6 +36,8 @@ export class FungibleToken implements Token {
       symbol: string;
       decimals: number;
       preMint: string;
+      mintable: boolean;
+      burnable: boolean;
     },
   ) {}
 
@@ -45,7 +49,7 @@ export class FungibleToken implements Token {
 
     let constructorCode = undefined;
 
-    if (this.config.preMint.trim().length > 0) {
+    if (this.config.preMint.trim().length > 0 && +this.config.preMint > 0) {
       imports.push({ path: ['near_sdk', 'env'] });
       constructorCode = `contract.deposit_unchecked(&env::predecessor_account_id(), ${this.config.preMint}u128);`;
     }
@@ -55,6 +59,36 @@ export class FungibleToken implements Token {
       `symbol = "${this.config.symbol}"`,
       `decimals = ${this.config.decimals}`,
     ];
+
+    let bindgenCodes = [];
+
+    if (this.config.mintable) {
+      imports.push({ path: ['near_sdk', 'AccountId'] });
+      imports.push({ path: ['near_sdk', 'json_types', 'U128'] });
+      const code = `
+pub fn mint(&mut self, account_id: AccountId, amount: U128) {${indent(1)(
+        guards.beforeAuthorizedFunction.join('\n'),
+      )}
+    Nep141Controller::mint(self, account_id, amount.into(), None);
+}
+`.trim();
+      bindgenCodes.push(code);
+    }
+
+    if (this.config.burnable) {
+      imports.push({ path: ['near_sdk', 'env'] });
+      imports.push({ path: ['near_sdk', 'json_types', 'U128'] });
+      const code = `
+pub fn burn(&mut self, amount: U128) {${indent(1)(
+        guards.beforeAuthorizedFunction.join('\n'),
+      )}
+    Nep141Controller::burn(self, env::predecessor_account_id(), amount.into(), None);
+}
+`.trim();
+      bindgenCodes.push(code);
+    }
+
+    const bindgenCode = bindgenCodes.join('\n\n') || undefined;
 
     let otherCode = undefined;
 
@@ -84,6 +118,7 @@ ${guards.afterChangeFunction.map(indent(2)).join('\n')}
       deriveMacroName: 'FungibleToken',
       deriveMacroAttribute,
       constructorCode,
+      bindgenCode,
       otherCode,
     };
   }
@@ -234,6 +269,7 @@ export interface PluginCodeFragments {
   constructorCode?: string;
   beforeChangeFunctionGuards: string[];
   afterChangeFunctionGuards: string[];
+  authorizedFunctionGuards: string[];
 }
 
 export class Owner implements ContractPlugin {
@@ -255,6 +291,7 @@ export class Owner implements ContractPlugin {
       constructorCode,
       beforeChangeFunctionGuards: [],
       afterChangeFunctionGuards: [],
+      authorizedFunctionGuards: [],
     };
   }
 }
@@ -273,6 +310,7 @@ export class Pause implements ContractPlugin {
       deriveMacroName: 'Pause',
       beforeChangeFunctionGuards: ['Contract::require_unpaused();'],
       afterChangeFunctionGuards: [],
+      authorizedFunctionGuards: [],
     };
   }
 }
@@ -407,6 +445,7 @@ export function generateCode(
   const guards: Guards = {
     beforeChangeFunction: [],
     afterChangeFunction: [],
+    beforeAuthorizedFunction: [],
   };
 
   const deriveMacroNames = [
@@ -425,6 +464,9 @@ export function generateCode(
     );
     guards.afterChangeFunction.push(
       ...pluginCodeFragments.afterChangeFunctionGuards,
+    );
+    guards.beforeAuthorizedFunction.push(
+      ...pluginCodeFragments.authorizedFunctionGuards,
     );
     if (pluginCodeFragments.constructorCode) {
       constructorCodes.push(pluginCodeFragments.constructorCode);
@@ -452,15 +494,21 @@ export function generateCode(
 
   deriveMacroAttributes.push('#[near_bindgen]');
 
-  let constructorCode = 'Self {}';
+  let constructorCode = '\nSelf {}';
   if (constructorCodes.length > 0) {
     constructorCode = `
 let mut contract = Self {};
 
 ${constructorCodes.join('\n')}
 
-contract
-`.trim();
+contract`;
+  }
+
+  let bindgenCode = '';
+  if (tokenCodeFragments.bindgenCode) {
+    bindgenCode = `
+
+${tokenCodeFragments.bindgenCode}`;
   }
 
   return (
@@ -474,9 +522,8 @@ pub struct Contract {}
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new() -> Self {
-${indent(2)(constructorCode)}
-    }
+    pub fn new() -> Self {${indent(2)(constructorCode)}
+    }${indent(1)(bindgenCode)}
 }
 
 ${tokenCodeFragments.otherCode ? tokenCodeFragments.otherCode : ''}

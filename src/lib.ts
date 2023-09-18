@@ -292,7 +292,10 @@ export interface CodeGenerationOptionsPojo {
         which: 'nft';
         config: ConstructorParameters<typeof NonFungibleToken>[0];
       };
-  plugins: ('owner' | 'pause')[];
+  plugins: {
+    owner?: {};
+    pause?: {};
+  };
 }
 
 function isPojoConfig(x: any): x is CodeGenerationOptionsPojo {
@@ -310,14 +313,14 @@ function pojoToConfig(pojo: CodeGenerationOptionsPojo): CodeGenerationOptions {
       ? new FungibleToken(pojo.token.config)
       : new NonFungibleToken(pojo.token.config);
 
-  const plugins = pojo.plugins.map((plugin) => {
-    switch (plugin) {
+  const plugins = Object.entries(pojo.plugins).map(([pluginId, config]) => {
+    switch (pluginId) {
       case 'owner':
-        return new Owner({});
+        return new Owner(config);
       case 'pause':
-        return new Pause({});
+        return new Pause(config);
       default:
-        throw new Error(`Unknown plugin: ${plugin}`);
+        throw new Error(`Unknown plugin: "${pluginId}"`);
     }
   });
 

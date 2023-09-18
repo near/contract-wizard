@@ -4,7 +4,7 @@
 
 1. Install dependencies: `npm install`.
 2. Run `npm run prepare` to install commit hooks.
-3. Run `npm run build` to build the project.
+3. Run `npm run build:dev` to build the project.
 
 ## Generating code using the CLI
 

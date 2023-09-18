@@ -35,9 +35,9 @@ export class FungibleToken implements Token {
       name: string;
       symbol: string;
       decimals: number;
-      preMint: string;
-      mintable: boolean;
-      burnable: boolean;
+      preMint?: string;
+      mintable?: boolean;
+      burnable?: boolean;
     },
   ) {}
 
@@ -49,7 +49,11 @@ export class FungibleToken implements Token {
 
     let constructorCode = undefined;
 
-    if (this.config.preMint.trim().length > 0 && +this.config.preMint > 0) {
+    if (
+      this.config.preMint &&
+      this.config.preMint.trim().length > 0 &&
+      +this.config.preMint > 0
+    ) {
       imports.push({ path: ['near_sdk', 'env'] });
       constructorCode = `contract.deposit_unchecked(&env::predecessor_account_id(), ${this.config.preMint}u128);`;
     }
@@ -60,15 +64,16 @@ export class FungibleToken implements Token {
       `decimals = ${this.config.decimals}`,
     ];
 
-    let bindgenCodes = [];
+    const bindgenCodes = [];
+    const beforeAuthorizedFunction = guards.beforeAuthorizedFunction.length
+      ? '\n' + indent(1)(guards.beforeAuthorizedFunction.join('\n'))
+      : '';
 
     if (this.config.mintable) {
       imports.push({ path: ['near_sdk', 'AccountId'] });
       imports.push({ path: ['near_sdk', 'json_types', 'U128'] });
       const code = `
-pub fn mint(&mut self, account_id: AccountId, amount: U128) {${indent(1)(
-        guards.beforeAuthorizedFunction.join('\n'),
-      )}
+pub fn mint(&mut self, account_id: AccountId, amount: U128) {${beforeAuthorizedFunction}
     Nep141Controller::mint(self, account_id, amount.into(), None);
 }
 `.trim();
@@ -79,9 +84,7 @@ pub fn mint(&mut self, account_id: AccountId, amount: U128) {${indent(1)(
       imports.push({ path: ['near_sdk', 'env'] });
       imports.push({ path: ['near_sdk', 'json_types', 'U128'] });
       const code = `
-pub fn burn(&mut self, amount: U128) {${indent(1)(
-        guards.beforeAuthorizedFunction.join('\n'),
-      )}
+pub fn burn(&mut self, amount: U128) {
     Nep141Controller::burn(self, env::predecessor_account_id(), amount.into(), None);
 }
 `.trim();
@@ -129,6 +132,8 @@ export class NonFungibleToken implements Token {
     public config: {
       name: string;
       symbol: string;
+      mintable?: boolean;
+      burnable?: boolean;
     },
   ) {}
 
@@ -147,49 +152,47 @@ contract.set_contract_metadata(ContractMetadata::new(
 
     let otherCode = undefined;
 
+    const beforeChangeFunctionCode = guards.beforeChangeFunction.length
+      ? '\n' + guards.beforeChangeFunction.map(indent(1)).join('\n')
+      : '';
+    const afterChangeFunctionCode = guards.afterChangeFunction.length
+      ? '\n' + guards.afterChangeFunction.map(indent(1)).join('\n')
+      : '';
+    const beforeAuthorizedFunction = guards.beforeAuthorizedFunction.length
+      ? '\n' + indent(1)(guards.beforeAuthorizedFunction.join('\n'))
+      : '';
+
     if (
       guards.afterChangeFunction.length == 0 &&
-      guards.beforeChangeFunction.length == 0
+      guards.beforeChangeFunction.length == 0 &&
+      guards.beforeAuthorizedFunction.length == 0
     ) {
       attributes.push('no_core_hooks', 'no_approval_hooks');
     } else {
       imports.push({ path: ['near_sdk', 'AccountId'] });
 
-      const beforeChangeFunctionCode = guards.beforeChangeFunction
-        .map(indent(1))
-        .join('\n');
-      const afterChangeFunctionCode = guards.afterChangeFunction
-        .map(indent(1))
-        .join('\n');
-
       let nep178HookCode = [
         beforeChangeFunctionCode.length > 0
           ? `
-fn before_nft_approve(&self, token_id: &TokenId, account_id: &AccountId) {
-${beforeChangeFunctionCode}
+fn before_nft_approve(&self, token_id: &TokenId, account_id: &AccountId) {${beforeChangeFunctionCode}
 }
 
-fn before_nft_revoke(&self, token_id: &TokenId, account_id: &AccountId) {
-${beforeChangeFunctionCode}
+fn before_nft_revoke(&self, token_id: &TokenId, account_id: &AccountId) {${beforeChangeFunctionCode}
 }
 
-fn before_nft_revoke_all(&self, token_id: &TokenId) {
-${beforeChangeFunctionCode}
+fn before_nft_revoke_all(&self, token_id: &TokenId) {${beforeChangeFunctionCode}
 }
 `.trim()
           : '',
         afterChangeFunctionCode.length > 0
           ? `
-fn after_nft_approve(&mut self, token_id: &TokenId, account_id: &AccountId, _approval_id: &ApprovalId) {
-${afterChangeFunctionCode}
+fn after_nft_approve(&mut self, token_id: &TokenId, account_id: &AccountId, _approval_id: &ApprovalId) {${afterChangeFunctionCode}
 }
 
-fn after_nft_revoke(&mut self, token_id: &TokenId, account_id: &AccountId) {
-${afterChangeFunctionCode}
+fn after_nft_revoke(&mut self, token_id: &TokenId, account_id: &AccountId) {${afterChangeFunctionCode}
 }
 
-fn after_nft_revoke_all(&mut self, token_id: &TokenId) {
-${afterChangeFunctionCode}
+fn after_nft_revoke_all(&mut self, token_id: &TokenId) {${afterChangeFunctionCode}
 }
 `.trim()
           : '',
@@ -210,18 +213,12 @@ ${nep178HookCode}
 
       let nep171HookCode = [
         beforeChangeFunctionCode.length > 0
-          ? `
-fn before_nft_transfer(&self, transfer: &Nep171Transfer) {
-${beforeChangeFunctionCode}
-}
-        `.trim()
+          ? `fn before_nft_transfer(&self, transfer: &Nep171Transfer) {${beforeChangeFunctionCode}
+}`
           : '',
         afterChangeFunctionCode.length > 0
-          ? `
-fn before_nft_transfer(&self, transfer: &Nep171Transfer) {
-${afterChangeFunctionCode}
-}
-        `.trim()
+          ? `fn after_nft_transfer(&self, transfer: &Nep171Transfer) {${afterChangeFunctionCode}
+}`
           : '',
       ]
         .filter((x) => x.length > 0)
@@ -243,6 +240,33 @@ ${nep171HookCode}
         .join('\n\n');
     }
 
+    const bindgenCodes = [];
+
+    if (this.config.mintable) {
+      imports.push({ path: ['near_sdk', 'AccountId'] });
+      imports.push({ path: ['near_sdk', 'env'] });
+      const code = `
+pub fn mint(&mut self, token_id: TokenId, account_id: AccountId, metadata: TokenMetadata) {${beforeAuthorizedFunction}${beforeChangeFunctionCode}
+    Nep177Controller::mint_with_metadata(self, token_id, account_id, metadata)
+        .unwrap_or_else(|e| env::panic_str(&e.to_string()));${afterChangeFunctionCode}
+}
+`.trim();
+      bindgenCodes.push(code);
+    }
+
+    if (this.config.burnable) {
+      imports.push({ path: ['near_sdk', 'env'] });
+      const code = `
+pub fn burn(&mut self, token_id: TokenId) {${beforeChangeFunctionCode}
+    Nep177Controller::burn_with_metadata(self, token_id, &env::predecessor_account_id())
+        .unwrap_or_else(|e| env::panic_str(&e.to_string()));${afterChangeFunctionCode}
+}
+`.trim();
+      bindgenCodes.push(code);
+    }
+
+    const bindgenCode = bindgenCodes.join('\n\n') || undefined;
+
     const deriveMacroAttribute =
       attributes.length > 0
         ? `#[non_fungible_token(${attributes.join(', ')})]`
@@ -253,6 +277,7 @@ ${nep171HookCode}
       deriveMacroName: 'NonFungibleToken',
       deriveMacroAttribute,
       constructorCode,
+      bindgenCode,
       otherCode,
     };
   }
@@ -291,7 +316,7 @@ export class Owner implements ContractPlugin {
       constructorCode,
       beforeChangeFunctionGuards: [],
       afterChangeFunctionGuards: [],
-      authorizedFunctionGuards: [],
+      authorizedFunctionGuards: ['<Self as Owner>::require_owner();'],
     };
   }
 }

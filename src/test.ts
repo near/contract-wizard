@@ -37,6 +37,8 @@ const tests: (() => CodeGenerationOptions)[] = [
     token: new NonFungibleToken({
       name: 'My Fungible Token',
       symbol: 'MFT',
+      mintable: false,
+      burnable: false,
     }),
     plugins: [],
   }),
@@ -44,6 +46,17 @@ const tests: (() => CodeGenerationOptions)[] = [
     token: new NonFungibleToken({
       name: 'My Fungible Token',
       symbol: 'MFT',
+      mintable: true,
+      burnable: true,
+    }),
+    plugins: [new Pause({})],
+  }),
+  () => ({
+    token: new NonFungibleToken({
+      name: 'My Fungible Token',
+      symbol: 'MFT',
+      mintable: true,
+      burnable: false,
     }),
     plugins: [new Owner({}), new Pause({})],
   }),

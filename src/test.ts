@@ -7,6 +7,7 @@ import {
   NonFungibleToken,
   Owner,
   Pause,
+  Rbac,
   generateCode,
 } from './lib';
 
@@ -31,12 +32,12 @@ const tests: (() => CodeGenerationOptions)[] = [
       mintable: false,
       burnable: false,
     }),
-    plugins: [new Owner({}), new Pause({})],
+    plugins: [new Pause({}), new Rbac({ accountId: 'bob.near' })],
   }),
   () => ({
     token: new NonFungibleToken({
-      name: 'My Fungible Token',
-      symbol: 'MFT',
+      name: 'My Non Fungible Token',
+      symbol: 'MNFT',
       mintable: false,
       burnable: false,
     }),
@@ -44,8 +45,17 @@ const tests: (() => CodeGenerationOptions)[] = [
   }),
   () => ({
     token: new NonFungibleToken({
-      name: 'My Fungible Token',
-      symbol: 'MFT',
+      name: 'My Non Fungible Token',
+      symbol: 'MNFT',
+      mintable: true,
+      burnable: true,
+    }),
+    plugins: [new Owner({})],
+  }),
+  () => ({
+    token: new NonFungibleToken({
+      name: 'My Non Fungible Token',
+      symbol: 'MNFT',
       mintable: true,
       burnable: true,
     }),
@@ -53,12 +63,12 @@ const tests: (() => CodeGenerationOptions)[] = [
   }),
   () => ({
     token: new NonFungibleToken({
-      name: 'My Fungible Token',
-      symbol: 'MFT',
+      name: 'My Non Fungible Token',
+      symbol: 'MNFT',
       mintable: true,
       burnable: false,
     }),
-    plugins: [new Owner({}), new Pause({})],
+    plugins: [new Pause({}), new Rbac({})],
   }),
 ];
 

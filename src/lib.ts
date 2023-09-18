@@ -65,6 +65,12 @@ export class FungibleToken implements Token {
     ];
 
     const bindgenCodes = [];
+    const beforeChangeFunctionCode = guards.beforeChangeFunction.length
+      ? '\n' + guards.beforeChangeFunction.map(indent(1)).join('\n')
+      : '';
+    const afterChangeFunctionCode = guards.afterChangeFunction.length
+      ? '\n' + guards.afterChangeFunction.map(indent(1)).join('\n')
+      : '';
     const beforeAuthorizedFunction = guards.beforeAuthorizedFunction.length
       ? '\n' + indent(1)(guards.beforeAuthorizedFunction.join('\n'))
       : '';
@@ -73,8 +79,8 @@ export class FungibleToken implements Token {
       imports.push({ path: ['near_sdk', 'AccountId'] });
       imports.push({ path: ['near_sdk', 'json_types', 'U128'] });
       const code = `
-pub fn mint(&mut self, account_id: AccountId, amount: U128) {${beforeAuthorizedFunction}
-    Nep141Controller::mint(self, account_id, amount.into(), None);
+pub fn mint(&mut self, account_id: AccountId, amount: U128) {${beforeChangeFunctionCode}${beforeAuthorizedFunction}
+    Nep141Controller::mint(self, account_id, amount.into(), None);${afterChangeFunctionCode}
 }
 `.trim();
       bindgenCodes.push(code);
@@ -84,8 +90,8 @@ pub fn mint(&mut self, account_id: AccountId, amount: U128) {${beforeAuthorizedF
       imports.push({ path: ['near_sdk', 'env'] });
       imports.push({ path: ['near_sdk', 'json_types', 'U128'] });
       const code = `
-pub fn burn(&mut self, amount: U128) {
-    Nep141Controller::burn(self, env::predecessor_account_id(), amount.into(), None);
+pub fn burn(&mut self, amount: U128) {${beforeChangeFunctionCode}
+    Nep141Controller::burn(self, env::predecessor_account_id(), amount.into(), None);${afterChangeFunctionCode}
 }
 `.trim();
       bindgenCodes.push(code);
@@ -103,12 +109,14 @@ pub fn burn(&mut self, amount: U128) {
     } else {
       otherCode = `
 impl Nep141Hook for Contract {
-    fn before_transfer(&mut self, transfer: &Nep141Transfer) {
-${guards.beforeChangeFunction.map(indent(2)).join('\n')}
+    fn before_transfer(&mut self, transfer: &Nep141Transfer) {${indent(1)(
+      beforeChangeFunctionCode,
+    )}
     }
 
-    fn after_transfer(&mut self, transfer: &Nep141Transfer, _: ()) {
-${guards.afterChangeFunction.map(indent(2)).join('\n')}
+    fn after_transfer(&mut self, transfer: &Nep141Transfer, _: ()) {${indent(1)(
+      afterChangeFunctionCode,
+    )}
     }
 }
 `.trim();
@@ -292,9 +300,48 @@ export interface PluginCodeFragments {
   deriveMacroName?: string;
   deriveMacroAttribute?: string;
   constructorCode?: string;
+  otherCode?: string;
   beforeChangeFunctionGuards: string[];
   afterChangeFunctionGuards: string[];
   authorizedFunctionGuards: string[];
+}
+
+export class Rbac implements ContractPlugin {
+  constructor(
+    public config: {
+      accountId?: string;
+    },
+  ) {}
+
+  generate(): PluginCodeFragments {
+    const imports = [
+      { path: ['near_sdk', 'borsh', 'self'] },
+      { path: ['near_sdk', 'borsh', 'BorshSerialize'] },
+      { path: ['near_sdk', 'BorshStorageKey'] },
+      { path: ['near_sdk_contract_tools', 'Rbac'] },
+      { path: ['near_sdk_contract_tools', 'rbac', '*'] },
+    ];
+
+    const accountId = this.config.accountId
+      ? `"${this.config.accountId}".parse().unwrap()`
+      : 'env::predecessor_account_id()';
+
+    return {
+      imports,
+      deriveMacroName: 'Rbac',
+      deriveMacroAttribute: `#[rbac(roles = "Role")]`,
+      beforeChangeFunctionGuards: [],
+      afterChangeFunctionGuards: [],
+      authorizedFunctionGuards: ['<Self as Rbac>::require_role(&Role::Admin);'],
+      constructorCode: `contract.add_role(${accountId}, &Role::Admin);`,
+      otherCode: `
+#[derive(BorshSerialize, BorshStorageKey)]
+pub enum Role {
+    Admin,
+}
+`.trim(),
+    };
+  }
 }
 
 export class Owner implements ContractPlugin {
@@ -358,6 +405,7 @@ export interface CodeGenerationOptionsPojo {
   plugins: {
     owner?: {};
     pause?: {};
+    rbac?: {};
   };
 }
 
@@ -382,6 +430,8 @@ function pojoToConfig(pojo: CodeGenerationOptionsPojo): CodeGenerationOptions {
         return new Owner(config);
       case 'pause':
         return new Pause(config);
+      case 'rbac':
+        return new Rbac(config);
       default:
         throw new Error(`Unknown plugin: "${pluginId}"`);
     }
@@ -480,6 +530,7 @@ export function generateCode(
   ];
   const deriveMacroAttributes = [];
   const constructorCodes = [];
+  const otherCodes = [];
 
   Object.values(useOptions.plugins).forEach((plugin) => {
     const pluginCodeFragments = plugin.generate();
@@ -502,6 +553,9 @@ export function generateCode(
     if (pluginCodeFragments.deriveMacroAttribute) {
       deriveMacroAttributes.push(pluginCodeFragments.deriveMacroAttribute);
     }
+    if (pluginCodeFragments.otherCode) {
+      otherCodes.push(pluginCodeFragments.otherCode);
+    }
   });
 
   const tokenCodeFragments = useOptions.token.generate(guards);
@@ -515,6 +569,9 @@ export function generateCode(
   }
   if (tokenCodeFragments.constructorCode) {
     constructorCodes.push(tokenCodeFragments.constructorCode);
+  }
+  if (tokenCodeFragments.otherCode) {
+    otherCodes.push(tokenCodeFragments.otherCode);
   }
 
   deriveMacroAttributes.push('#[near_bindgen]');
@@ -551,7 +608,7 @@ impl Contract {
     }${indent(1)(bindgenCode)}
 }
 
-${tokenCodeFragments.otherCode ? tokenCodeFragments.otherCode : ''}
+${otherCodes.join('\n\n')}
 `.trim() + '\n'
   );
 }

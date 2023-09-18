@@ -17,9 +17,15 @@ return (
               symbol: 'MYT',
               decimals: 24,
               preMint: '1000000000000000000000000',
+              mintable: true,
+              burnable: true,
             },
           },
-          plugins: ['owner', 'pause'],
+          plugins: {
+            // owner: {},
+            pause: {},
+            rbac: { accountId: 'bob.near' },
+          },
         },
         onMessage: (e) => {
           State.update({ msg: e });

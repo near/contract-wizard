@@ -56,11 +56,15 @@ export class FungibleToken implements Token {
         : undefined;
 
     if (preMint !== undefined) {
-      imports.push({ path: ['near_sdk', 'env'] });
+      let preMintReceiver;
 
-      const preMintReceiver = this.config.preMintReceiver
-        ? `"${this.config.preMintReceiver}".parse().unwrap()`
-        : 'env::predecessor_account_id()';
+      if (this.config.preMintReceiver) {
+        preMintReceiver = `"${this.config.preMintReceiver}".parse().unwrap()`;
+      } else {
+        imports.push({ path: ['near_sdk', 'env'] });
+        preMintReceiver = 'env::predecessor_account_id()';
+      }
+
       constructorCode = `contract.mint(${preMintReceiver}, ${this.config.preMint}u128, None);`;
     }
 
@@ -337,9 +341,14 @@ export class Rbac implements ContractPlugin {
       { path: ['near_sdk_contract_tools', 'rbac', '*'] },
     ];
 
-    const accountId = this.config.accountId
-      ? `"${this.config.accountId}".parse().unwrap()`
-      : 'env::predecessor_account_id()';
+    let accountId;
+
+    if (this.config.accountId) {
+      accountId = `"${this.config.accountId}".parse().unwrap()`;
+    } else {
+      imports.push({ path: ['near_sdk', 'env'] });
+      accountId = 'env::predecessor_account_id()';
+    }
 
     return {
       imports,

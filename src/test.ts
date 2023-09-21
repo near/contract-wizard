@@ -82,6 +82,15 @@ const tests: (() => CodeGenerationOptions)[] = [
     }),
     plugins: [new Owner({ accountId: 'bob.near' })],
   }),
+  () => ({
+    token: new NonFungibleToken({
+      name: 'My Non Fungible Token',
+      symbol: 'MNFT',
+      mintable: false,
+      burnable: false,
+    }),
+    plugins: [new Rbac({})],
+  }),
 ];
 
 for (const test of tests) {

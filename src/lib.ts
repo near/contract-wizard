@@ -34,7 +34,7 @@ export class FungibleToken implements Token {
     public config: {
       name: string;
       symbol: string;
-      decimals: number;
+      decimals: number | string;
       preMint?: string;
       mintable?: boolean;
       burnable?: boolean;
@@ -58,13 +58,9 @@ export class FungibleToken implements Token {
       constructorCode = `contract.deposit_unchecked(&env::predecessor_account_id(), ${this.config.preMint}u128);`;
     }
 
-    const decimals =
-      typeof this.config.decimals == 'number' &&
-      this.config.decimals > 0 &&
-      this.config.decimals <= 255 &&
-      (this.config.decimals | 0) === this.config.decimals
-        ? this.config.decimals
-        : 24;
+    const decimalsValue =
+      'decimals' in this.config ? +this.config.decimals : 24;
+    const decimals = Math.max(0, Math.min(24, decimalsValue));
 
     const attributes = [
       `name = "${this.config.name}"`,

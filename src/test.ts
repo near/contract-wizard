@@ -29,6 +29,7 @@ const tests: (() => CodeGenerationOptions)[] = [
       symbol: 'MFT',
       decimals: 24,
       preMint: '1000',
+      preMintReceiver: 'bob.near',
       mintable: false,
       burnable: false,
     }),

@@ -36,6 +36,7 @@ export class FungibleToken implements Token {
       symbol: string;
       decimals: number | string;
       preMint?: string;
+      preMintReceiver?: string;
       mintable?: boolean;
       burnable?: boolean;
     },
@@ -49,18 +50,23 @@ export class FungibleToken implements Token {
 
     let constructorCode = undefined;
 
-    if (
-      this.config.preMint &&
-      this.config.preMint.trim().length > 0 &&
-      +this.config.preMint > 0
-    ) {
+    const preMint =
+      this.config.preMint && +this.config.preMint > 0
+        ? (this.config.preMint + '').trim()
+        : undefined;
+
+    if (preMint !== undefined) {
       imports.push({ path: ['near_sdk', 'env'] });
-      constructorCode = `contract.mint(env::predecessor_account_id(), ${this.config.preMint}u128, None);`;
+
+      const preMintReceiver = this.config.preMintReceiver
+        ? `"${this.config.preMintReceiver}".parse().unwrap()`
+        : 'env::predecessor_account_id()';
+      constructorCode = `contract.mint(${preMintReceiver}, ${this.config.preMint}u128, None);`;
     }
 
     const decimalsValue =
       'decimals' in this.config ? +this.config.decimals : 24;
-    const decimals = Math.max(0, Math.min(24, decimalsValue));
+    const decimals = Math.max(0, Math.min(38, decimalsValue));
 
     const attributes = [
       `name = "${this.config.name}"`,

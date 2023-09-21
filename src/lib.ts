@@ -58,10 +58,18 @@ export class FungibleToken implements Token {
       constructorCode = `contract.deposit_unchecked(&env::predecessor_account_id(), ${this.config.preMint}u128);`;
     }
 
+    const decimals =
+      typeof this.config.decimals == 'number' &&
+      this.config.decimals > 0 &&
+      this.config.decimals <= 255 &&
+      (this.config.decimals | 0) === this.config.decimals
+        ? this.config.decimals
+        : 24;
+
     const attributes = [
       `name = "${this.config.name}"`,
       `symbol = "${this.config.symbol}"`,
-      `decimals = ${this.config.decimals}`,
+      `decimals = ${decimals}`,
     ];
 
     const bindgenCodes = [];
@@ -140,6 +148,7 @@ export class NonFungibleToken implements Token {
     public config: {
       name: string;
       symbol: string;
+      baseUri?: string;
       mintable?: boolean;
       burnable?: boolean;
     },
@@ -152,7 +161,11 @@ export class NonFungibleToken implements Token {
 contract.set_contract_metadata(ContractMetadata::new(
     "${this.config.name}".to_string(),
     "${this.config.symbol}".to_string(),
-    None,
+    ${
+      this.config.baseUri
+        ? `Some("${this.config.baseUri}".to_string())`
+        : 'None'
+    },
 ));
 `.trim();
 
@@ -345,7 +358,11 @@ pub enum Role {
 }
 
 export class Owner implements ContractPlugin {
-  constructor(_config: {}) {}
+  constructor(
+    public config: {
+      accountId?: string;
+    },
+  ) {}
 
   generate(): PluginCodeFragments {
     const imports = [
@@ -354,8 +371,11 @@ export class Owner implements ContractPlugin {
       { path: ['near_sdk_contract_tools', 'owner', '*'] },
     ];
 
-    const constructorCode =
-      'Owner::init(&mut contract, &env::predecessor_account_id());';
+    const accountId = this.config.accountId
+      ? `"${this.config.accountId}".parse().unwrap()`
+      : 'env::predecessor_account_id()';
+
+    const constructorCode = `Owner::init(&mut contract, &${accountId});`;
 
     return {
       imports,

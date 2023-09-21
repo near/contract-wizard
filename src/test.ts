@@ -70,6 +70,17 @@ const tests: (() => CodeGenerationOptions)[] = [
     }),
     plugins: [new Pause({}), new Rbac({})],
   }),
+  () => ({
+    token: new FungibleToken({
+      name: 'My Fungible Token',
+      symbol: 'MFT',
+      decimals: 18,
+      preMint: '0',
+      mintable: false,
+      burnable: true,
+    }),
+    plugins: [new Owner({ accountId: 'bob.near' })],
+  }),
 ];
 
 for (const test of tests) {

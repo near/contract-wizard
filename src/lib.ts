@@ -55,7 +55,7 @@ export class FungibleToken implements Token {
       +this.config.preMint > 0
     ) {
       imports.push({ path: ['near_sdk', 'env'] });
-      constructorCode = `contract.deposit_unchecked(&env::predecessor_account_id(), ${this.config.preMint}u128);`;
+      constructorCode = `contract.mint(env::predecessor_account_id(), ${this.config.preMint}u128, None);`;
     }
 
     const decimalsValue =

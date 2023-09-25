@@ -65,7 +65,7 @@ export class FungibleToken implements Token {
         preMintReceiver = 'env::predecessor_account_id()';
       }
 
-      constructorCode = `contract.mint(${preMintReceiver}, ${this.config.preMint}u128, None);`;
+      constructorCode = `Nep141Controller::mint(&mut contract, ${preMintReceiver}, ${this.config.preMint}u128, None);`;
     }
 
     const decimalsValue =

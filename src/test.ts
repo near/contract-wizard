@@ -1,96 +1,149 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-  CodeGenerationOptions,
-  FungibleToken,
-  NonFungibleToken,
-  Owner,
-  Pause,
-  Rbac,
-  generateCode,
-} from './lib';
+import { CodeGenerationOptionsPojo, generateCode } from './lib';
 
-const tests: (() => CodeGenerationOptions)[] = [
-  () => ({
-    token: new FungibleToken({
-      name: 'My Fungible Token',
-      symbol: 'MFT',
-      decimals: 24,
-      preMint: '0',
-      mintable: true,
-      burnable: true,
-    }),
-    plugins: [],
-  }),
-  () => ({
-    token: new FungibleToken({
-      name: 'My Fungible Token',
-      symbol: 'MFT',
-      decimals: 24,
-      preMint: '1000',
-      preMintReceiver: 'bob.near',
-      mintable: false,
-      burnable: false,
-    }),
-    plugins: [new Pause({}), new Rbac({ accountId: 'bob.near' })],
-  }),
-  () => ({
-    token: new NonFungibleToken({
-      name: 'My Non Fungible Token',
-      symbol: 'MNFT',
-      mintable: false,
-      burnable: false,
-    }),
-    plugins: [],
-  }),
-  () => ({
-    token: new NonFungibleToken({
-      name: 'My Non Fungible Token',
-      symbol: 'MNFT',
-      mintable: true,
-      burnable: true,
-    }),
-    plugins: [new Owner({})],
-  }),
-  () => ({
-    token: new NonFungibleToken({
-      name: 'My Non Fungible Token',
-      symbol: 'MNFT',
-      mintable: true,
-      burnable: true,
-    }),
-    plugins: [new Pause({})],
-  }),
-  () => ({
-    token: new NonFungibleToken({
-      name: 'My Non Fungible Token',
-      symbol: 'MNFT',
-      mintable: true,
-      burnable: false,
-    }),
-    plugins: [new Pause({}), new Rbac({})],
-  }),
-  () => ({
-    token: new FungibleToken({
-      name: 'My Fungible Token',
-      symbol: 'MFT',
-      decimals: 18,
-      preMint: '0',
-      mintable: false,
-      burnable: true,
-    }),
-    plugins: [new Owner({ accountId: 'bob.near' })],
-  }),
-  () => ({
-    token: new NonFungibleToken({
-      name: 'My Non Fungible Token',
-      symbol: 'MNFT',
-      mintable: false,
-      burnable: false,
-    }),
-    plugins: [new Rbac({})],
-  }),
+const testOptions: CodeGenerationOptionsPojo[] = [
+  {
+    token: {
+      which: 'ft',
+      config: {
+        name: 'My Fungible Token',
+        symbol: 'MFT',
+        decimals: 24,
+        preMint: '0',
+        mintable: true,
+        burnable: true,
+      },
+    },
+    plugins: {},
+  },
+  {
+    token: {
+      which: 'ft',
+      config: {
+        name: 'My Fungible Token',
+        symbol: 'MFT',
+        decimals: 24,
+        preMint: '1000',
+        preMintReceiver: 'bob.near',
+        mintable: false,
+        burnable: false,
+      },
+    },
+    plugins: {
+      pause: {},
+      rbac: {
+        accountId: 'bob.near',
+      },
+    },
+  },
+  {
+    token: {
+      which: 'nft',
+      config: {
+        name: 'My Non Fungible Token',
+        symbol: 'MNFT',
+        mintable: false,
+        burnable: false,
+      },
+    },
+    plugins: {},
+  },
+  {
+    token: {
+      which: 'nft',
+      config: {
+        name: 'My Non Fungible Token',
+        symbol: 'MNFT',
+        mintable: true,
+        burnable: true,
+      },
+    },
+    plugins: {
+      owner: {},
+    },
+  },
+  {
+    token: {
+      which: 'nft',
+      config: {
+        name: 'My Non Fungible Token',
+        symbol: 'MNFT',
+        mintable: true,
+        burnable: true,
+      },
+    },
+    plugins: {
+      pause: {},
+    },
+  },
+  {
+    token: {
+      which: 'nft',
+      config: {
+        name: 'My Non Fungible Token',
+        symbol: 'MNFT',
+        mintable: true,
+        burnable: false,
+      },
+    },
+    plugins: {
+      pause: {},
+      owner: {},
+    },
+  },
+  {
+    token: {
+      which: 'ft',
+      config: {
+        name: 'My Fungible Token',
+        symbol: 'MFT',
+        decimals: 18,
+        preMint: '0',
+        mintable: false,
+        burnable: true,
+      },
+    },
+    plugins: {
+      rbac: {
+        accountId: 'bob.near',
+      },
+    },
+  },
+  {
+    token: {
+      which: 'nft',
+      config: {
+        name: 'My Non Fungible Token',
+        symbol: 'MNFT',
+        mintable: false,
+        burnable: false,
+      },
+    },
+    plugins: {
+      rbac: {},
+    },
+  },
+  {
+    token: {
+      which: 'ft',
+      config: {
+        name: 'My Fungible Token',
+        symbol: 'MFT',
+        decimals: 24,
+        preMint: '1220',
+        preMintReceiver: 'bob.near',
+        mintable: true,
+        burnable: false,
+      },
+    },
+    plugins: {
+      rbac: {
+        accountId: 'bob.near',
+      },
+    },
+  },
 ];
 
 const srcDir = 'tests/src';
@@ -98,8 +151,7 @@ const filePath = path.join(srcDir, 'lib.rs');
 
 fs.mkdirSync(srcDir, { recursive: true });
 
-for (const test of tests) {
-  const options = test();
+for (const options of testOptions) {
   const code = generateCode(options);
   fs.writeFileSync(filePath, code, {
     encoding: 'utf-8',

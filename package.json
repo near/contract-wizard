@@ -12,7 +12,7 @@
     "cli": "node build-cli.mjs && node build/cli.js",
     "dev": "bos-loader test --path ./build/dev/src",
     "clean": "rm -rf ./build",
-    "deploy": "cd build/prod && bos components deploy contractwizard.near sign-as contractwizard.near network-config mainnet sign-with-macos-keychain send"
+    "deploy": "cd build/prod && bos components deploy contractwizard.near sign-as contractwizard.near network-config mainnet"
   },
   "repository": {
     "type": "git",

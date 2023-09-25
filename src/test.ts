@@ -3,9 +3,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CodeGenerationOptionsPojo, generateCode } from './lib';
 
-// use to specify the indices of specific tests to run
-const only: number[] = [];
-
 const testOptions: CodeGenerationOptionsPojo[] = [
   {
     token: {
@@ -148,6 +145,9 @@ const testOptions: CodeGenerationOptionsPojo[] = [
     },
   },
 ];
+
+// use to specify the indices of specific tests to run
+const only: number[] = [];
 
 const srcDir = 'tests/src';
 const filePath = path.join(srcDir, 'lib.rs');

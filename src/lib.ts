@@ -196,8 +196,6 @@ contract.set_contract_metadata(ContractMetadata::new(
     ) {
       attributes.push('no_core_hooks', 'no_approval_hooks');
     } else {
-      imports.push({ path: ['near_sdk', 'AccountId'] });
-
       let nep178HookCode = [
         beforeChangeFunctionCode.length > 0
           ? `
@@ -231,6 +229,7 @@ fn after_nft_revoke_all(&mut self, token_id: &TokenId) {${afterChangeFunctionCod
       if (nep178HookCode.length == 0) {
         attributes.push('no_approval_hooks');
       } else {
+        imports.push({ path: ['near_sdk', 'AccountId'] });
         nep178HookCode = `
 impl SimpleNep178Hook for Contract {
 ${nep178HookCode}
@@ -523,21 +522,37 @@ function resolveImports(imports: Import[]): string {
 
       childCodes.sort();
 
-      const hasMultilineChildren = childCodes.some((code) =>
-        code.includes('\n'),
-      );
+      // first line doesn't have an indent applied
+      const lines = [childCodes.shift()!];
 
-      if (!hasMultilineChildren) {
-        const childCode = childCodes.join(', ');
-
-        if (prefix.length + childCode.length + '{}'.length <= maxCols) {
-          return `${prefix}{${childCode}}`;
+      while (childCodes.length > 0) {
+        const nextCode = childCodes.shift()!;
+        if (nextCode.includes('\n')) {
+          lines.push(indent(1)(nextCode));
+          continue;
+        }
+        const nextLine = lines[lines.length - 1] + ', ' + nextCode;
+        if (nextLine.length > maxCols) {
+          lines.push(indent(1)(nextCode));
+        } else {
+          lines[lines.length - 1] = nextLine;
         }
       }
 
-      // don't even try single-lining everything
-      const childCode = childCodes.map(indent(1)).join(',\n');
+      if (lines.length === 1) {
+        const line = lines[0];
+        const singleLine = `${prefix}{${line}}`;
+        if (singleLine.length <= maxCols) {
+          return singleLine;
+        } else {
+          return `${prefix}{\n${indent(1)(line)}\n}`;
+        }
+      }
 
+      // apply indent to first line
+      lines[0] = indent(1)(lines[0]);
+
+      const childCode = lines.join(',\n');
       return `${prefix}{
 ${childCode},
 }`;

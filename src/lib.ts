@@ -508,16 +508,37 @@ function resolveImports(imports: Import[]): string {
     addPath(roots, i.path);
   }
 
-  function generateImportCode(root: ImportNode): string {
+  function generateImportCode(root: ImportNode, maxCols = 80): string {
     const childNodes = Object.values(root.children);
+    const prefix = `${root.part}::`;
     if (childNodes.length === 1) {
-      return `${root.part}::${generateImportCode(childNodes[0])}`;
+      return `${prefix}${generateImportCode(
+        childNodes[0],
+        maxCols - prefix.length,
+      )}`;
     } else if (childNodes.length > 1) {
-      const childCode = childNodes
-        .map(generateImportCode)
-        .map(indent(1))
-        .join(',\n');
-      return `${root.part}::{
+      const childCodes = childNodes.map((childNode) =>
+        generateImportCode(childNode, maxCols - prefix.length),
+      );
+
+      childCodes.sort();
+
+      const hasMultilineChildren = childCodes.some((code) =>
+        code.includes('\n'),
+      );
+
+      if (!hasMultilineChildren) {
+        const childCode = childCodes.join(', ');
+
+        if (prefix.length + childCode.length + '{}'.length <= maxCols) {
+          return `${prefix}{${childCode}}`;
+        }
+      }
+
+      // don't even try single-lining everything
+      const childCode = childCodes.map(indent(1)).join(',\n');
+
+      return `${prefix}{
 ${childCode},
 }`;
     } else {
@@ -526,7 +547,7 @@ ${childCode},
   }
 
   return Object.values(roots.children)
-    .map((child) => `use ${generateImportCode(child)};`)
+    .map((child) => `use ${generateImportCode(child, 75)};`)
     .join('\n');
 }
 

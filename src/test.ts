@@ -3,6 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CodeGenerationOptionsPojo, generateCode } from './lib';
 
+// use to specify the indices of specific tests to run
+const only: number[] = [];
+
 const testOptions: CodeGenerationOptionsPojo[] = [
   {
     token: {
@@ -151,7 +154,10 @@ const filePath = path.join(srcDir, 'lib.rs');
 
 fs.mkdirSync(srcDir, { recursive: true });
 
-for (const options of testOptions) {
+const runTests =
+  only.length === 0 ? testOptions : only.map((i) => testOptions[i]);
+
+for (const options of runTests) {
   const code = generateCode(options);
   fs.writeFileSync(filePath, code, {
     encoding: 'utf-8',

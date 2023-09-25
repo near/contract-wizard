@@ -93,10 +93,15 @@ const tests: (() => CodeGenerationOptions)[] = [
   }),
 ];
 
+const srcDir = 'tests/src';
+const filePath = path.join(srcDir, 'lib.rs');
+
+fs.mkdirSync(srcDir, { recursive: true });
+
 for (const test of tests) {
   const options = test();
   const code = generateCode(options);
-  fs.writeFileSync('tests/src/lib.rs', code, {
+  fs.writeFileSync(filePath, code, {
     encoding: 'utf-8',
   });
 

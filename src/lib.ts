@@ -376,10 +376,13 @@ export class Owner implements ContractPlugin {
 
   generate(): PluginCodeFragments {
     const imports = [
-      { path: ['near_sdk', 'env'] },
       { path: ['near_sdk_contract_tools', 'Owner'] },
       { path: ['near_sdk_contract_tools', 'owner', '*'] },
     ];
+
+    if (!this.config.accountId) {
+      imports.push({ path: ['near_sdk', 'env'] });
+    }
 
     const accountId = this.config.accountId
       ? `"${this.config.accountId}".parse().unwrap()`

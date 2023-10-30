@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 near-sdk = "4.1.1"
-near-sdk-contract-tools = "2.0.0"
+near-sdk-contract-tools = "2.1.0"
 
 [lib]
 crate-type = ["cdylib"]
@@ -19,6 +19,3 @@ lto = true
 opt-level = "z"
 overflow-checks = true
 panic = "abort"
-
-[patch.crates-io]
-near-sdk-contract-tools = { git = "https://github.com/near/near-sdk-contract-tools", branch = "develop" }

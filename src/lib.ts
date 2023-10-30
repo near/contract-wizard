@@ -10,12 +10,6 @@ export interface Import {
   path: string[];
 }
 
-export interface Guards {
-  beforeChangeFunction: string[];
-  afterChangeFunction: string[];
-  beforeAuthorizedFunction: string[];
-}
-
 export interface TokenCodeFragments {
   imports: Import[];
   deriveMacroName?: string;
@@ -25,8 +19,25 @@ export interface TokenCodeFragments {
   otherCode?: string;
 }
 
+export interface Hooks {
+  all: string[];
+  authorized: string[];
+}
+
+function hooksToCons(hooks: string[]): string {
+  if (hooks.length === 0) {
+    return '()';
+  } else if (hooks.length === 1) {
+    return hooks[0];
+  } else {
+    const hook = hooks[0];
+    const tail = hooks.slice(1);
+    return `(${hook}, ${hooksToCons(tail)})`;
+  }
+}
+
 export interface Token {
-  generate(guards: Guards): TokenCodeFragments;
+  generate(hooks: Hooks): TokenCodeFragments;
 }
 
 export class FungibleToken implements Token {
@@ -42,13 +53,24 @@ export class FungibleToken implements Token {
     },
   ) {}
 
-  generate(guards: Guards): TokenCodeFragments {
+  generate(hooks: Hooks): TokenCodeFragments {
     const imports = [
-      { path: ['near_sdk_contract_tools', 'FungibleToken'] },
-      { path: ['near_sdk_contract_tools', 'standard', 'nep141', '*'] },
+      { path: ['near_sdk_contract_tools', 'ft', '*'] },
+      { path: ['near_sdk', 'env'] },
     ];
 
-    let constructorCode = undefined;
+    const decimalsValue =
+      'decimals' in this.config ? +this.config.decimals : 24;
+    const decimals = Math.max(0, Math.min(38, decimalsValue));
+
+    let constructorCodes = [
+      `
+Nep148Controller::set_metadata(
+    &mut contract,
+    &FungibleTokenMetadata::new("${this.config.name}".to_string(), "${this.config.symbol}".to_string(), ${decimals}),
+);
+`.trim(),
+    ];
 
     const preMint =
       this.config.preMint && +this.config.preMint > 0
@@ -61,40 +83,41 @@ export class FungibleToken implements Token {
       if (this.config.preMintReceiver) {
         preMintReceiver = `"${this.config.preMintReceiver}".parse().unwrap()`;
       } else {
-        imports.push({ path: ['near_sdk', 'env'] });
         preMintReceiver = 'env::predecessor_account_id()';
       }
 
-      constructorCode = `Nep141Controller::mint(&mut contract, ${preMintReceiver}, ${this.config.preMint}u128, None);`;
+      constructorCodes.push(
+        `
+Nep141Controller::mint(
+    &mut contract,
+    &Nep141Mint {
+        amount: ${this.config.preMint}u128,
+        receiver_id: &${preMintReceiver},
+        memo: None,
+    },
+)
+.unwrap_or_else(|e| env::panic_str(&e.to_string()));
+`.trim(),
+      );
     }
 
-    const decimalsValue =
-      'decimals' in this.config ? +this.config.decimals : 24;
-    const decimals = Math.max(0, Math.min(38, decimalsValue));
-
-    const attributes = [
-      `name = "${this.config.name}"`,
-      `symbol = "${this.config.symbol}"`,
-      `decimals = ${decimals}`,
-    ];
-
     const bindgenCodes = [];
-    const beforeChangeFunctionCode = guards.beforeChangeFunction.length
-      ? '\n' + guards.beforeChangeFunction.map(indent(1)).join('\n')
-      : '';
-    const afterChangeFunctionCode = guards.afterChangeFunction.length
-      ? '\n' + guards.afterChangeFunction.map(indent(1)).join('\n')
-      : '';
-    const beforeAuthorizedFunction = guards.beforeAuthorizedFunction.length
-      ? '\n' + indent(1)(guards.beforeAuthorizedFunction.join('\n'))
-      : '';
 
     if (this.config.mintable) {
       imports.push({ path: ['near_sdk', 'AccountId'] });
+      imports.push({ path: ['near_sdk', 'env'] });
       imports.push({ path: ['near_sdk', 'json_types', 'U128'] });
       const code = `
-pub fn mint(&mut self, account_id: AccountId, amount: U128) {${beforeChangeFunctionCode}${beforeAuthorizedFunction}
-    Nep141Controller::mint(self, account_id, amount.into(), None);${afterChangeFunctionCode}
+pub fn mint(&mut self, account_id: AccountId, amount: U128) {
+    Nep141Controller::mint(
+        self,
+        &Nep141Mint {
+            amount: amount.into(),
+            receiver_id: &account_id,
+            memo: None,
+        },
+    )
+    .unwrap_or_else(|e| env::panic_str(&e.to_string()));
 }
 `.trim();
       bindgenCodes.push(code);
@@ -104,8 +127,16 @@ pub fn mint(&mut self, account_id: AccountId, amount: U128) {${beforeChangeFunct
       imports.push({ path: ['near_sdk', 'env'] });
       imports.push({ path: ['near_sdk', 'json_types', 'U128'] });
       const code = `
-pub fn burn(&mut self, amount: U128) {${beforeChangeFunctionCode}
-    Nep141Controller::burn(self, env::predecessor_account_id(), amount.into(), None);${afterChangeFunctionCode}
+pub fn burn(&mut self, amount: U128) {
+    Nep141Controller::burn(
+        self,
+        &Nep141Burn {
+            amount: amount.into(),
+            owner_id: &env::predecessor_account_id(),
+            memo: None,
+        },
+    )
+    .unwrap_or_else(|e| env::panic_str(&e.to_string()));
 }
 `.trim();
       bindgenCodes.push(code);
@@ -113,38 +144,27 @@ pub fn burn(&mut self, amount: U128) {${beforeChangeFunctionCode}
 
     const bindgenCode = bindgenCodes.join('\n\n') || undefined;
 
-    let otherCode = undefined;
+    const attributes = [];
 
-    if (
-      guards.afterChangeFunction.length == 0 &&
-      guards.beforeChangeFunction.length == 0
-    ) {
-      attributes.push('no_hooks');
-    } else {
-      otherCode = `
-impl Nep141Hook for Contract {
-    fn before_transfer(&mut self, transfer: &Nep141Transfer) {${indent(1)(
-      beforeChangeFunctionCode,
-    )}
+    if (hooks.all.length !== 0) {
+      attributes.push(`all_hooks = "${hooksToCons(hooks.all)}"`);
     }
 
-    fn after_transfer(&mut self, transfer: &Nep141Transfer, _: ()) {${indent(1)(
-      afterChangeFunctionCode,
-    )}
-    }
-}
-`.trim();
+    if (hooks.authorized.length !== 0) {
+      attributes.push(`mint_hook = "${hooksToCons(hooks.authorized)}"`);
     }
 
-    const deriveMacroAttribute = `#[fungible_token(${attributes.join(', ')})]`;
+    const deriveMacroAttribute =
+      attributes.length > 0
+        ? `#[fungible_token(${attributes.join(', ')})]`
+        : undefined;
 
     return {
       imports,
       deriveMacroName: 'FungibleToken',
       deriveMacroAttribute,
-      constructorCode,
+      constructorCode: constructorCodes.join('\n\n'),
       bindgenCode,
-      otherCode,
     };
   }
 }
@@ -160,7 +180,7 @@ export class NonFungibleToken implements Token {
     },
   ) {}
 
-  generate(guards: Guards): TokenCodeFragments {
+  generate(hooks: Hooks): TokenCodeFragments {
     const imports = [{ path: ['near_sdk_contract_tools', 'nft', '*'] }];
 
     const constructorCode = `
@@ -173,98 +193,9 @@ contract.set_contract_metadata(ContractMetadata::new(
         : 'None'
     },
 ));
-`.trim();
-
-    const attributes = [];
+    `.trim();
 
     let otherCode = undefined;
-
-    const beforeChangeFunctionCode = guards.beforeChangeFunction.length
-      ? '\n' + guards.beforeChangeFunction.map(indent(1)).join('\n')
-      : '';
-    const afterChangeFunctionCode = guards.afterChangeFunction.length
-      ? '\n' + guards.afterChangeFunction.map(indent(1)).join('\n')
-      : '';
-    const beforeAuthorizedFunction = guards.beforeAuthorizedFunction.length
-      ? '\n' + indent(1)(guards.beforeAuthorizedFunction.join('\n'))
-      : '';
-
-    if (
-      guards.afterChangeFunction.length == 0 &&
-      guards.beforeChangeFunction.length == 0 &&
-      guards.beforeAuthorizedFunction.length == 0
-    ) {
-      attributes.push('no_core_hooks', 'no_approval_hooks');
-    } else {
-      let nep178HookCode = [
-        beforeChangeFunctionCode.length > 0
-          ? `
-fn before_nft_approve(&self, token_id: &TokenId, account_id: &AccountId) {${beforeChangeFunctionCode}
-}
-
-fn before_nft_revoke(&self, token_id: &TokenId, account_id: &AccountId) {${beforeChangeFunctionCode}
-}
-
-fn before_nft_revoke_all(&self, token_id: &TokenId) {${beforeChangeFunctionCode}
-}
-`.trim()
-          : '',
-        afterChangeFunctionCode.length > 0
-          ? `
-fn after_nft_approve(&mut self, token_id: &TokenId, account_id: &AccountId, _approval_id: &ApprovalId) {${afterChangeFunctionCode}
-}
-
-fn after_nft_revoke(&mut self, token_id: &TokenId, account_id: &AccountId) {${afterChangeFunctionCode}
-}
-
-fn after_nft_revoke_all(&mut self, token_id: &TokenId) {${afterChangeFunctionCode}
-}
-`.trim()
-          : '',
-      ]
-        .filter((x) => x.length > 0)
-        .map(indent(1))
-        .join('\n\n');
-
-      if (nep178HookCode.length == 0) {
-        attributes.push('no_approval_hooks');
-      } else {
-        imports.push({ path: ['near_sdk', 'AccountId'] });
-        nep178HookCode = `
-impl SimpleNep178Hook for Contract {
-${nep178HookCode}
-}
-`.trim();
-      }
-
-      let nep171HookCode = [
-        beforeChangeFunctionCode.length > 0
-          ? `fn before_nft_transfer(&self, transfer: &Nep171Transfer) {${beforeChangeFunctionCode}
-}`
-          : '',
-        afterChangeFunctionCode.length > 0
-          ? `fn after_nft_transfer(&self, transfer: &Nep171Transfer) {${afterChangeFunctionCode}
-}`
-          : '',
-      ]
-        .filter((x) => x.length > 0)
-        .map(indent(1))
-        .join('\n\n');
-
-      if (nep171HookCode.length == 0) {
-        attributes.push('no_core_hooks');
-      } else {
-        nep171HookCode = `
-impl SimpleNep171Hook for Contract {
-${nep171HookCode}
-}
-`.trim();
-      }
-
-      otherCode = [nep178HookCode, nep171HookCode]
-        .filter((x) => x.length > 0)
-        .join('\n\n');
-    }
 
     const bindgenCodes = [];
 
@@ -272,26 +203,36 @@ ${nep171HookCode}
       imports.push({ path: ['near_sdk', 'AccountId'] });
       imports.push({ path: ['near_sdk', 'env'] });
       const code = `
-pub fn mint(&mut self, token_id: TokenId, account_id: AccountId, metadata: TokenMetadata) {${beforeAuthorizedFunction}${beforeChangeFunctionCode}
+pub fn mint(&mut self, token_id: TokenId, account_id: AccountId, metadata: TokenMetadata) {
     Nep177Controller::mint_with_metadata(self, token_id, account_id, metadata)
-        .unwrap_or_else(|e| env::panic_str(&e.to_string()));${afterChangeFunctionCode}
+        .unwrap_or_else(|e| env::panic_str(&e.to_string()));
 }
-`.trim();
+    `.trim();
       bindgenCodes.push(code);
     }
 
     if (this.config.burnable) {
       imports.push({ path: ['near_sdk', 'env'] });
       const code = `
-pub fn burn(&mut self, token_id: TokenId) {${beforeChangeFunctionCode}
+pub fn burn(&mut self, token_id: TokenId) {
     Nep177Controller::burn_with_metadata(self, token_id, &env::predecessor_account_id())
-        .unwrap_or_else(|e| env::panic_str(&e.to_string()));${afterChangeFunctionCode}
+        .unwrap_or_else(|e| env::panic_str(&e.to_string()));
 }
-`.trim();
+    `.trim();
       bindgenCodes.push(code);
     }
 
     const bindgenCode = bindgenCodes.join('\n\n') || undefined;
+
+    const attributes = [];
+
+    if (hooks.all.length !== 0) {
+      attributes.push(`all_hooks = "${hooksToCons(hooks.all)}"`);
+    }
+
+    if (hooks.authorized.length !== 0) {
+      attributes.push(`mint_hook = "${hooksToCons(hooks.authorized)}"`);
+    }
 
     const deriveMacroAttribute =
       attributes.length > 0
@@ -319,9 +260,7 @@ export interface PluginCodeFragments {
   deriveMacroAttribute?: string;
   constructorCode?: string;
   otherCode?: string;
-  beforeChangeFunctionGuards: string[];
-  afterChangeFunctionGuards: string[];
-  authorizedFunctionGuards: string[];
+  hooks: Hooks;
 }
 
 export class Rbac implements ContractPlugin {
@@ -338,6 +277,7 @@ export class Rbac implements ContractPlugin {
       { path: ['near_sdk', 'BorshStorageKey'] },
       { path: ['near_sdk_contract_tools', 'Rbac'] },
       { path: ['near_sdk_contract_tools', 'rbac', '*'] },
+      { path: ['near_sdk_contract_tools', 'hook', 'Hook'] },
     ];
 
     let accountId;
@@ -353,14 +293,24 @@ export class Rbac implements ContractPlugin {
       imports,
       deriveMacroName: 'Rbac',
       deriveMacroAttribute: `#[rbac(roles = "Role")]`,
-      beforeChangeFunctionGuards: [],
-      afterChangeFunctionGuards: [],
-      authorizedFunctionGuards: ['<Self as Rbac>::require_role(&Role::Admin);'],
+      hooks: {
+        all: [],
+        authorized: ['OnlyAdmin'],
+      },
       constructorCode: `contract.add_role(${accountId}, &Role::Admin);`,
       otherCode: `
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum Role {
     Admin,
+}
+
+pub struct OnlyAdmin;
+
+impl<A> Hook<Contract, A> for OnlyAdmin {
+    fn hook<R>(contract: &mut Contract, _args: &A, f: impl FnOnce(&mut Contract) -> R) -> R {
+        <Contract as Rbac>::require_role(&Role::Admin);
+        f(contract)
+    }
 }
 `.trim(),
     };
@@ -378,6 +328,7 @@ export class Owner implements ContractPlugin {
     const imports = [
       { path: ['near_sdk_contract_tools', 'Owner'] },
       { path: ['near_sdk_contract_tools', 'owner', '*'] },
+      { path: ['near_sdk_contract_tools', 'owner', 'hooks', 'OnlyOwner'] },
     ];
 
     if (!this.config.accountId) {
@@ -394,9 +345,10 @@ export class Owner implements ContractPlugin {
       imports,
       deriveMacroName: 'Owner',
       constructorCode,
-      beforeChangeFunctionGuards: [],
-      afterChangeFunctionGuards: [],
-      authorizedFunctionGuards: ['<Self as Owner>::require_owner();'],
+      hooks: {
+        all: [],
+        authorized: ['OnlyOwner'],
+      },
     };
   }
 }
@@ -408,14 +360,16 @@ export class Pause implements ContractPlugin {
     const imports = [
       { path: ['near_sdk_contract_tools', 'Pause'] },
       { path: ['near_sdk_contract_tools', 'pause', '*'] },
+      { path: ['near_sdk_contract_tools', 'pause', 'hooks', 'PausableHook'] },
     ];
 
     return {
       imports,
       deriveMacroName: 'Pause',
-      beforeChangeFunctionGuards: ['Contract::require_unpaused();'],
-      afterChangeFunctionGuards: [],
-      authorizedFunctionGuards: [],
+      hooks: {
+        all: ['PausableHook'],
+        authorized: [],
+      },
     };
   }
 }
@@ -587,10 +541,9 @@ export function generateCode(
     { path: ['near_sdk', 'borsh', 'BorshDeserialize'] },
   ];
 
-  const guards: Guards = {
-    beforeChangeFunction: [],
-    afterChangeFunction: [],
-    beforeAuthorizedFunction: [],
+  const hooks: Hooks = {
+    all: [],
+    authorized: [],
   };
 
   const deriveMacroNames = [
@@ -605,15 +558,8 @@ export function generateCode(
   Object.values(useOptions.plugins).forEach((plugin) => {
     const pluginCodeFragments = plugin.generate();
     imports.push(...pluginCodeFragments.imports);
-    guards.beforeChangeFunction.push(
-      ...pluginCodeFragments.beforeChangeFunctionGuards,
-    );
-    guards.afterChangeFunction.push(
-      ...pluginCodeFragments.afterChangeFunctionGuards,
-    );
-    guards.beforeAuthorizedFunction.push(
-      ...pluginCodeFragments.authorizedFunctionGuards,
-    );
+    hooks.all.push(...pluginCodeFragments.hooks.all);
+    hooks.authorized.push(...pluginCodeFragments.hooks.authorized);
     if (pluginCodeFragments.constructorCode) {
       constructorCodes.push(pluginCodeFragments.constructorCode);
     }
@@ -628,7 +574,7 @@ export function generateCode(
     }
   });
 
-  const tokenCodeFragments = useOptions.token.generate(guards);
+  const tokenCodeFragments = useOptions.token.generate(hooks);
 
   imports.push(...tokenCodeFragments.imports);
   if (tokenCodeFragments.deriveMacroName) {

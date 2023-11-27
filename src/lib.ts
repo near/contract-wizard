@@ -1,3 +1,21 @@
+function makeValidAccountId(s: string): string {
+  const clean = (s: string) =>
+    s
+      .split('.')
+      .map((p) => p.replace(/[^a-z0-9_-]/g, ''))
+      .filter((p) => p.length > 0)
+      .join('.');
+  const cleaned = clean(s);
+
+  if (cleaned.length > 64) {
+    return clean(cleaned.substring(0, 64));
+  } else if (cleaned.length < 2) {
+    return clean(cleaned + '.near');
+  } else {
+    return cleaned;
+  }
+}
+
 function indent(n: number): (s: string) => string {
   return (s: string) =>
     s
@@ -81,7 +99,9 @@ Nep148Controller::set_metadata(
       let preMintReceiver;
 
       if (this.config.preMintReceiver) {
-        preMintReceiver = `"${this.config.preMintReceiver}".parse().unwrap()`;
+        preMintReceiver = `"${makeValidAccountId(
+          this.config.preMintReceiver,
+        )}".parse().unwrap()`;
       } else {
         preMintReceiver = 'env::predecessor_account_id()';
       }
@@ -91,7 +111,7 @@ Nep148Controller::set_metadata(
 Nep141Controller::mint(
     &mut contract,
     &Nep141Mint {
-        amount: ${this.config.preMint}u128,
+        amount: ${preMint}u128,
         receiver_id: &${preMintReceiver},
         memo: None,
     },
@@ -283,7 +303,9 @@ export class Rbac implements ContractPlugin {
     let accountId;
 
     if (this.config.accountId) {
-      accountId = `"${this.config.accountId}".parse().unwrap()`;
+      accountId = `"${makeValidAccountId(
+        this.config.accountId,
+      )}".parse().unwrap()`;
     } else {
       imports.push({ path: ['near_sdk', 'env'] });
       accountId = 'env::predecessor_account_id()';
@@ -336,7 +358,7 @@ export class Owner implements ContractPlugin {
     }
 
     const accountId = this.config.accountId
-      ? `"${this.config.accountId}".parse().unwrap()`
+      ? `"${makeValidAccountId(this.config.accountId)}".parse().unwrap()`
       : 'env::predecessor_account_id()';
 
     const constructorCode = `Owner::init(&mut contract, &${accountId});`;

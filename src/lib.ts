@@ -16,6 +16,10 @@ function makeValidAccountId(s: string): string {
   }
 }
 
+function makeString(s: string): string {
+  return JSON.stringify(s);
+}
+
 function indent(n: number): (s: string) => string {
   return (s: string) =>
     s
@@ -85,7 +89,9 @@ export class FungibleToken implements Token {
       `
 Nep148Controller::set_metadata(
     &mut contract,
-    &FungibleTokenMetadata::new("${this.config.name}".to_string(), "${this.config.symbol}".to_string(), ${decimals}),
+    &FungibleTokenMetadata::new(${makeString(
+      this.config.name,
+    )}.to_string(), ${makeString(this.config.symbol)}.to_string(), ${decimals}),
 );
 `.trim(),
     ];
@@ -205,11 +211,11 @@ export class NonFungibleToken implements Token {
 
     const constructorCode = `
 contract.set_contract_metadata(ContractMetadata::new(
-    "${this.config.name}".to_string(),
-    "${this.config.symbol}".to_string(),
+    ${makeString(this.config.name)}.to_string(),
+    ${makeString(this.config.symbol)}.to_string(),
     ${
       this.config.baseUri
-        ? `Some("${this.config.baseUri}".to_string())`
+        ? `Some(${makeString(this.config.baseUri)}.to_string())`
         : 'None'
     },
 ));
